@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>达拉斯旅行地图</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --food:#FF6247;--ent:#7C5CFC;--boba:#00C9A7;--custom:#95a5a6;
+  --bg:#F7F8FA;--card:#fff;--text:#1a1a2e;--sub:#6b7280;--border:#e5e7eb;
+  --shadow:0 4px 20px rgba(0,0,0,0.08);--shadow-lg:0 12px 40px rgba(0,0,0,0.15);
+  --r:16px;--sidebar:370px;
+}
+html,body{height:100%;font-family:'Plus Jakarta Sans','Noto Sans SC',system-ui,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar);height:100vh;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:1000;flex-shrink:0}
+.sidebar-header{padding:20px 20px 14px}
+.sidebar-title{font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
+.sidebar-sub{font-size:12px;color:var(--sub);margin-top:4px}
+.filters{padding:8px 16px 12px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+.fbtn{padding:5px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.fbtn:hover{border-color:#bbb;transform:translateY(-1px)}
+.fbtn.on{color:#fff;border-color:transparent}
+.fbtn[data-c="all"].on{background:var(--text)}
+.fbtn[data-c="美食"].on{background:var(--food)}
+.fbtn[data-c="娱乐"].on{background:var(--ent)}
+.fbtn[data-c="奶茶"].on{background:var(--boba)}
+.fdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.plist{flex:1;overflow-y:auto;padding:4px 0}
+.plist::-webkit-scrollbar{width:3px}
+.plist::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+.pgroup-label{padding:12px 20px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--sub)}
+.pitem{padding:10px 20px;cursor:pointer;transition:background .12s;display:flex;align-items:center;gap:10px;border-left:3px solid transparent}
+.pitem:hover{background:#f3f4f6}
+.pitem.on{background:#EEF2FF;border-left-color:var(--ent)}
+.pitem-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pitem-info{min-width:0}
+.pitem-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pitem-addr{font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+
+/* MAP */
+.map-wrap{flex:1;position:relative}
+#map{width:100%;height:100%}
+
+/* Map label markers */
+.leaflet-marker-icon{overflow:visible!important}
+.mlabel{
+  position:relative;cursor:pointer;
+  transition:transform .15s,z-index 0s;
+  z-index:100;
+}
+.mlabel:hover{transform:scale(1.08);z-index:9000!important}
+.mlabel-pin{
+  display:flex;align-items:center;gap:0;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+}
+.mlabel-dot{
+  width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;border:2.5px solid #fff;flex-shrink:0;
+  box-shadow:0 1px 4px rgba(0,0,0,0.15);
+}
+.mlabel-txt{
+  background:#fff;border-radius:6px;padding:2px 7px;
+  font-size:11px;font-weight:600;font-family:'Plus Jakarta Sans','Noto Sans SC',sans-serif;
+  white-space:nowrap;color:#1a1a2e;
+  box-shadow:0 1px 4px rgba(0,0,0,0.12);
+  border:1px solid rgba(0,0,0,0.06);
+  margin-left:-3px;
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;
+  line-height:1.4;
+}
+.mlabel.small .mlabel-dot{width:20px;height:20px;font-size:10px;border-width:2px}
+.mlabel.small .mlabel-txt{font-size:9px;padding:1px 5px;max-width:100px}
+.mlabel.highlight{z-index:9999!important;transform:scale(1.15)}
+.mlabel.highlight .mlabel-txt{background:#1a1a2e;color:#fff;font-size:12px;max-width:200px;border-color:transparent}
+.mlabel.dim{opacity:.45}
+
+/* CARD OVERLAY */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:2000;justify-content:center;align-items:center;padding:16px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.overlay.show{display:flex}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow-lg);max-width:400px;width:100%;max-height:80vh;overflow-y:auto;animation:pop .22s ease}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.card::-webkit-scrollbar{width:3px}
+.card::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+.card-top{padding:18px 18px 10px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.card-badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;color:#fff}
+.card-name{font-size:18px;font-weight:700;margin-top:6px;line-height:1.3}
+.card-x{width:30px;height:30px;border:none;background:#f3f4f6;border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .12s;color:var(--text)}
+.card-x:hover{background:#e5e7eb}
+.card-body{padding:0 18px 18px}
+.cblock{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#f9fafb;border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:background .12s;-webkit-tap-highlight-color:transparent}
+.cblock:hover{background:#f3f4f6}
+.cblock:active{background:#e5e7eb}
+.cblock-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sub)}
+.cblock-text{font-size:13px;font-weight:500;margin-top:1px;word-break:break-word}
+.cblock-icon{flex-shrink:0;width:30px;height:30px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;border:1px solid var(--border);transition:all .12s}
+.cblock:hover .cblock-icon{border-color:#bbb}
+.card-desc{font-size:13px;color:#4b5563;line-height:1.6;margin:10px 0;padding:10px 12px;background:#FFFBEB;border-radius:10px;border-left:3px solid #F59E0B}
+.card-links{margin-top:10px}
+.card-links-t{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sub);margin-bottom:6px}
+.clink{display:block;padding:8px 12px;background:#FFF1F2;border-radius:10px;margin-bottom:5px;text-decoration:none;color:#E11D48;font-size:12px;font-weight:600;transition:background .12s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clink:hover{background:#FFE4E6}
+
+/* MOBILE */
+.pull{display:none;justify-content:center;padding:10px 0 4px;cursor:pointer}
+.pull-bar{width:36px;height:4px;background:#d1d5db;border-radius:2px}
+@media(max-width:768px){
+  .sidebar{position:fixed;left:0;bottom:0;width:100%;height:55vh;border-right:none;border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,0.08);transform:translateY(calc(100% - 52px));transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:1500}
+  .sidebar.open{transform:translateY(0)}
+  .pull{display:flex}
+  .map-wrap{width:100%;height:100%}
+  .card{max-width:100%;margin:0 6px;max-height:70vh}
+  .mlabel-txt{font-size:10px;max-width:110px}
+  .mlabel.small .mlabel-txt{font-size:8px;max-width:80px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar" id="sidebar">
+    <div class="pull" id="pull"><div class="pull-bar"></div></div>
+    <div class="sidebar-header">
+      <div class="sidebar-title">🗺️ 达拉斯旅行地图</div>
+      <div class="sidebar-sub" id="count">34 个地点</div>
+    </div>
+    <div class="filters" id="filters"></div>
+    <div class="plist" id="plist"></div>
+  </div>
+  <div class="map-wrap"><div id="map"></div></div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="card" id="card"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ============ DATA ============ */
+const CATS=[
+  {n:'美食',c:'#FF6247',icon:'🍜'},
+  {n:'娱乐',c:'#7C5CFC',icon:'🎯'},
+  {n:'奶茶',c:'#00C9A7',icon:'🧋'},
+];
+function ci(name){return CATS.find(c=>c.n===name)||{n:name,c:'#95a5a6',icon:'📍'}}
+
+const P=[
+  {n:'WorldSprings',t:'娱乐',a:'3240 Plano Pkwy, The Colony, TX 75056',d:'户外矿物温泉，46个池，全年开放',l:['https://www.xiaohongshu.com/explore/697e94d7000000000b01303e'],ll:[33.0925,-96.8858]},
+  {n:'No.1 BBQ',t:'美食',a:'6900 Alma Dr #160, Plano, TX 75023',d:'正宗东北烧烤串，氛围像中国夜宵摊',l:['https://www.xiaohongshu.com/explore/68c76600000000001c00a3f9','https://www.xiaohongshu.com/explore/6826b5be0000000020028b32'],ll:[33.0545,-96.7196]},
+  {n:'Boba Tea & Flavor of Asia',t:'美食',a:'737 Grapevine Hwy, Hurst, TX 76054',d:'地道北方中餐，京东肉饼、锅包肉必点',l:['https://www.xiaohongshu.com/explore/64d0199100000000100314f7'],ll:[32.835,-97.169]},
+  {n:'K1 Speed',t:'娱乐',a:'677 W Campbell Rd A, Richardson, TX 75080',d:'室内卡丁车',l:['https://www.xiaohongshu.com/explore/63f2e0f50000000011012af5'],ll:[32.9575,-96.7419]},
+  {n:'DH Noodle 敦煌拉面',t:'美食',a:'2001 Coit Rd Ste 165, Plano, TX 75075',d:'兰州手拉拉面，大盘鸡',l:['https://www.xiaohongshu.com/explore/66ddcba9000000002603ead4'],ll:[33.02,-96.7685]},
+  {n:'五味鼎 Wu Wei Din',t:'美食',a:'1505 N Central Expy, Plano, TX 75075',d:'台式中餐，牛肉面、红油抄手',l:['https://www.xiaohongshu.com/explore/64fcc377000000001f00598a'],ll:[33.014,-96.75]},
+  {n:'Rokhat Grill',t:'美食',a:'2205 N Central Expy Ste 180, Plano, TX 75075',d:'乌兹别克餐厅，手抓饭、烤串',l:['https://www.xiaohongshu.com/explore/67a71130000000001801bbec','https://www.xiaohongshu.com/explore/69291cfe000000001e029fb4'],ll:[33.019,-96.7498]},
+  {n:'川椒 Sichuan Pepper',t:'美食',a:'151 W Spring Creek Pkwy #511, Plano, TX 75023',d:'川菜',l:['https://www.xiaohongshu.com/explore/68f524850000000003034633'],ll:[33.0456,-96.753]},
+  {n:'Chasu Kitchen',t:'美食',a:'2100 Dallas Pkwy #130, Plano, TX 75093',d:'',l:['https://www.xiaohongshu.com/explore/687d7e56000000000b02e5b6'],ll:[33.031,-96.8266]},
+  {n:'湘遇 Hunan Chef',t:'美食',a:'9292 Warren Pkwy Ste 100, Frisco, TX 75035',d:'正宗湘菜，辣味浓郁',l:['https://www.xiaohongshu.com/explore/67c89806000000002900ed8b'],ll:[33.13,-96.815]},
+  {n:'鱼你 麻辣烫',t:'美食',a:'2313 Central Expy, Plano, TX 75075',d:'新开的麻辣烫',l:['https://www.xiaohongshu.com/explore/692382ab000000001d039824'],ll:[33.022,-96.7498]},
+  {n:'马师傅 Mashifu',t:'美食',a:'2049 Coit Rd (zTao内), Plano, TX 75075',d:'手工拉面、肉夹馍，zTao美食广场',l:['https://www.xiaohongshu.com/explore/68463ad3000000002001faeb'],ll:[33.021,-96.7685]},
+  {n:'China Blue',t:'美食',a:'2001 Coit Rd Ste 135, Plano, TX 75075',d:'老北京铜火锅、锅包肉',l:['https://www.xiaohongshu.com/explore/668cbf08000000000a00797d'],ll:[33.0201,-96.7684]},
+  {n:'图兰 Turan Uyghur',t:'美食',a:'2001 Coit Rd Ste 163, Plano, TX 75075',d:'维族美食，大盘鸡、拉条子',l:['https://www.xiaohongshu.com/explore/69291cfe000000001e029fb4'],ll:[33.0203,-96.7687]},
+  {n:'波记 Bokee BBQ',t:'美食',a:'7200 Independence Pkwy #248, Plano, TX 75025',d:'港式大排档',l:['https://www.xiaohongshu.com/explore/6965c9a7000000002102a210'],ll:[33.067,-96.787]},
+  {n:'楠火锅 Nan Hot Pot',t:'美食',a:'2380 N Central Expy, Plano, TX 75074',d:'正宗重庆火锅，耙鸡脚',l:['https://www.xiaohongshu.com/explore/680960250000000007034e83'],ll:[33.023,-96.7495]},
+  {n:'Netflix World',t:'娱乐',a:'13350 Dallas Pkwy, Dallas, TX 75240',d:'Galleria Dallas，Netflix主题体验',l:['https://www.xiaohongshu.com/explore/69b55bff000000001a025cc0'],ll:[32.934,-96.82]},
+  {n:'一碗面 No.1 Noodles',t:'美食',a:'105 Legacy Dr, Plano, TX 75023',d:'',l:['https://www.xiaohongshu.com/explore/66c61b66000000001d03b5cb'],ll:[33.075,-96.755]},
+  {n:'九宫格 Squares Hot Pot',t:'美食',a:'4152 W Spring Creek Pkwy Ste 108, Plano, TX 75024',d:'和牛AYCE火锅',l:['https://www.xiaohongshu.com/explore/683360c0000000002100e471'],ll:[33.0456,-96.805]},
+  {n:'Ninja Grill',t:'美食',a:'6509 W Park Blvd #435, Plano, TX 75093',d:'',l:['https://www.xiaohongshu.com/explore/67c36c95000000000602b1e7'],ll:[33.034,-96.837]},
+  {n:'面滋味',t:'美食',a:'6900 Alma Dr Ste 150, Plano, TX 75023',d:'',l:['https://www.xiaohongshu.com/explore/69694c19000000001a0279c3'],ll:[33.0546,-96.7197]},
+  {n:'Texan Wangbal 猪蹄',t:'美食',a:'2701 Old Denton Rd Ste 110, Carrollton, TX 75007',d:'韩式猪蹄/Bossam，分量超足',l:['https://www.xiaohongshu.com/explore/67565977000000000603dc38'],ll:[33.009,-96.904]},
+  {n:'卧虎藏龙',t:'美食',a:'328 N Greenville Ave, Richardson, TX 75081',d:'川菜自助，周末$28/位',l:['https://www.xiaohongshu.com/explore/69af9699000000000601d7c8'],ll:[32.953,-96.7165]},
+  {n:'Fortune House (Dallas)',t:'美食',a:'2010 Greenville Ave Ste B, Dallas, TX 75206',d:'上海菜，小笼包招牌',l:['https://www.xiaohongshu.com/explore/6414fd51000000001300891b'],ll:[32.817,-96.773]},
+  {n:'Fortune House (Irving)',t:'美食',a:'8150 N MacArthur Blvd Ste 190, Irving, TX 75063',d:'上海菜小笼包（原店）',l:['https://www.xiaohongshu.com/explore/6414fd51000000001300891b'],ll:[32.917,-96.953]},
+  {n:'Space Karaoke',t:'娱乐',a:'121 W Spring Creek Pkwy #331, Plano, TX 75023',d:'私人KTV包厢',l:['https://www.xiaohongshu.com/explore/68f12f6200000000040213bd'],ll:[33.0456,-96.7505]},
+  {n:'Epic Waters 水上乐园',t:'娱乐',a:'2970 Epic Pl, Grand Prairie, TX 75052',d:'全美Top3室内水上乐园',l:['https://www.xiaohongshu.com/explore/68b51083000000001d00ee53'],ll:[32.698,-97.006]},
+  {n:'King Spa & Sauna',t:'娱乐',a:'2154 Royal Ln, Dallas, TX 75229',d:'韩式洗浴中心',l:['https://www.xiaohongshu.com/explore/694a3399000000001f00b9f4'],ll:[32.888,-96.87]},
+  {n:'Dallas Glass Art',t:'娱乐',a:'8510 Chancellor Row, Dallas, TX 75247',d:'玻璃DIY体验',l:['https://www.xiaohongshu.com/explore/66d28d26000000001f0181a0'],ll:[32.821,-96.89]},
+  {n:'Monster Mini Golf',t:'娱乐',a:'2595 Preston Rd Ste 500, Frisco, TX 75034',d:'迷你高尔夫+保龄+游戏厅',l:['https://www.xiaohongshu.com/explore/6442e1bc0000000012032b52'],ll:[33.131,-96.802]},
+  {n:'Bolder Adventure Park',t:'娱乐',a:'2324 W Warrior Trail, Grand Prairie, TX 75052',d:'户外冒险公园',l:['https://www.xiaohongshu.com/explore/66ba436e000000000d030deb'],ll:[32.701,-97.011]},
+  {n:'Fuzz Lab 戳戳乐',t:'娱乐',a:'5100 Belt Line Rd Ste 514, Dallas, TX 75254',d:'Tufting地毯DIY、滴胶熊',l:['https://www.xiaohongshu.com/explore/66366143000000001e0183a2'],ll:[32.951,-96.829]},
+  {n:'龙与地下城',t:'娱乐',a:'2712 N Central Expy, Plano, TX 75074',d:'沉浸式体验',l:['https://www.xiaohongshu.com/explore/68f28d0f00000000030394f4'],ll:[33.026,-96.7496]},
+  {n:'Dark Hour 鬼屋',t:'娱乐',a:'701 Taylor Dr, Plano, TX 75074',d:'DFW顶级鬼屋，30000+sqft',l:['https://www.xiaohongshu.com/explore/6715d671000000001600d126'],ll:[33.006,-96.735]},
+];
+
+/* ============ GLOBALS ============ */
+let map,filter='all',activeIdx=null;
+let markerLayer;
+
+/* ============ INIT ============ */
+window.addEventListener('load',function(){
+  map=L.map('map',{zoomControl:false}).setView([33.02,-96.80],11);
+  L.control.zoom({position:'topright'}).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'© <a href="https://osm.org/copyright">OSM</a> © <a href="https://carto.com/">CARTO</a>',
+    maxZoom:19,subdomains:'abcd'
+  }).addTo(map);
+  markerLayer=L.layerGroup().addTo(map);
+
+  document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)closeCard()});
+  document.getElementById('pull').addEventListener('click',function(){document.getElementById('sidebar').classList.toggle('open')});
+
+  map.on('zoomend moveend',function(){requestAnimationFrame(resolveOverlaps)});
+
+  render();
+  setTimeout(resolveOverlaps,300);
+});
+
+/* ============ MARKERS WITH LABELS ============ */
+let labelMarkers=[];
+
+function renderMarkers(){
+  markerLayer.clearLayers();
+  labelMarkers=[];
+  P.forEach((p,i)=>{
+    if(filter!=='all'&&p.t!==filter)return;
+    if(!p.ll)return;
+    const c=ci(p.t);
+    const el=document.createElement('div');
+    el.className='mlabel';
+    el.setAttribute('data-idx',i);
+    el.innerHTML=`<div class="mlabel-pin"><div class="mlabel-dot" style="background:${c.c}">${c.icon}</div><div class="mlabel-txt">${p.n}</div></div>`;
+    el.addEventListener('click',function(e){e.stopPropagation();openCard(i)});
+    el.addEventListener('mouseenter',function(){highlightMarker(i)});
+    el.addEventListener('mouseleave',function(){unhighlightAll()});
+    // Touch: tap to open card directly
+    el.addEventListener('touchend',function(e){e.preventDefault();openCard(i)});
+
+    const icon=L.divIcon({className:'',html:el.outerHTML,iconSize:[200,32],iconAnchor:[13,16]});
+    const m=L.marker(p.ll,{icon:icon,interactive:true,zIndexOffset:100});
+    m._placeIdx=i;
+    markerLayer.addLayer(m);
+    labelMarkers.push({marker:m,idx:i,place:p});
+  });
+
+  // Re-attach event listeners to actual DOM elements after Leaflet renders them
+  setTimeout(()=>{
+    document.querySelectorAll('.mlabel').forEach(el=>{
+      const idx=parseInt(el.getAttribute('data-idx'));
+      el.addEventListener('click',function(e){e.stopPropagation();openCard(idx)});
+      el.addEventListener('mouseenter',function(){highlightMarker(idx)});
+      el.addEventListener('mouseleave',function(){unhighlightAll()});
+      el.addEventListener('touchend',function(e){e.preventDefault();openCard(idx)});
+    });
+    resolveOverlaps();
+  },100);
+}
+
+/* ============ OVERLAP RESOLUTION ============ */
+function resolveOverlaps(){
+  const els=document.querySelectorAll('.mlabel');
+  if(!els.length)return;
+
+  // Reset all
+  els.forEach(el=>{el.classList.remove('small');el.style.transform=''});
+
+  // Get bounding boxes
+  const rects=[];
+  els.forEach(el=>{
+    const r=el.getBoundingClientRect();
+    rects.push({el:el,x:r.x,y:r.y,w:r.width,h:r.height,ox:0,oy:0});
+  });
+
+  // Check density: count overlaps
+  let totalOverlaps=0;
+  for(let i=0;i<rects.length;i++){
+    for(let j=i+1;j<rects.length;j++){
+      if(rectsOverlap(rects[i],rects[j]))totalOverlaps++;
+    }
+  }
+
+  // If very dense, shrink labels
+  if(totalOverlaps>rects.length*0.6){
+    els.forEach(el=>el.classList.add('small'));
+    // Recalc rects
+    rects.forEach((r,i)=>{
+      const nr=r.el.getBoundingClientRect();
+      r.x=nr.x;r.y=nr.y;r.w=nr.width;r.h=nr.height;
+    });
+  }
+
+  // Simple iterative push-apart (up to 8 passes)
+  for(let pass=0;pass<8;pass++){
+    let moved=false;
+    for(let i=0;i<rects.length;i++){
+      for(let j=i+1;j<rects.length;j++){
+        const a=rects[i],b=rects[j];
+        const ax=a.x+a.ox,ay=a.y+a.oy;
+        const bx=b.x+b.ox,by=b.y+b.oy;
+        const overX=Math.min(ax+a.w,bx+b.w)-Math.max(ax,bx);
+        const overY=Math.min(ay+a.h,by+b.h)-Math.max(ay,by);
+        if(overX>0&&overY>0){
+          // Push apart along the smaller overlap axis
+          const pushX=overX<overY;
+          if(pushX){
+            const d=(overX/2)+1;
+            if(ax<bx){a.ox-=d;b.ox+=d}else{a.ox+=d;b.ox-=d}
+          }else{
+            const d=(overY/2)+1;
+            if(ay<by){a.oy-=d;b.oy+=d}else{a.oy+=d;b.oy-=d}
+          }
+          moved=true;
+        }
+      }
+    }
+    if(!moved)break;
+  }
+
+  // Apply offsets
+  rects.forEach(r=>{
+    if(r.ox!==0||r.oy!==0){
+      r.el.style.transform=`translate(${r.ox}px,${r.oy}px)`;
+    }
+  });
+}
+
+function rectsOverlap(a,b){
+  const ax=a.x+a.ox,ay=a.y+a.oy;
+  const bx=b.x+b.ox,by=b.y+b.oy;
+  return ax<bx+b.w&&ax+a.w>bx&&ay<by+b.h&&ay+a.h>by;
+}
+
+/* ============ HIGHLIGHT ============ */
+function highlightMarker(idx){
+  document.querySelectorAll('.mlabel').forEach(el=>{
+    const i=parseInt(el.getAttribute('data-idx'));
+    if(i===idx){el.classList.add('highlight');el.classList.remove('dim')}
+    else{el.classList.add('dim');el.classList.remove('highlight')}
+  });
+}
+function unhighlightAll(){
+  document.querySelectorAll('.mlabel').forEach(el=>{el.classList.remove('highlight','dim')});
+}
+
+/* ============ RENDER ============ */
+function render(){renderFilters();renderMarkers();renderList()}
+
+function renderFilters(){
+  const el=document.getElementById('filters');
+  const cats=['all',...CATS.map(c=>c.n)];
+  el.innerHTML=cats.map(c=>{
+    const inf=ci(c);const label=c==='all'?'全部':c;
+    const dot=c==='all'?'':`<span class="fdot" style="background:${inf.c}"></span>`;
+    return `<button class="fbtn ${filter===c?'on':''}" data-c="${c}" onclick="setFilter('${c}')">${dot}${label}</button>`;
+  }).join('');
+}
+function setFilter(c){filter=c;render()}
+
+function renderList(){
+  const el=document.getElementById('plist');
+  const vis=P.map((p,i)=>({...p,i})).filter(p=>filter==='all'||p.t===filter);
+  const groups={};vis.forEach(p=>{if(!groups[p.t])groups[p.t]=[];groups[p.t].push(p)});
+  let h='';
+  for(const cat in groups){
+    h+=`<div class="pgroup-label">${cat}（${groups[cat].length}）</div>`;
+    groups[cat].forEach(p=>{
+      const inf=ci(p.t);
+      h+=`<div class="pitem ${activeIdx===p.i?'on':''}" onclick="focusPlace(${p.i})" onmouseenter="highlightMarker(${p.i})" onmouseleave="unhighlightAll()">
+        <span class="pitem-dot" style="background:${inf.c}"></span>
+        <div class="pitem-info"><div class="pitem-name">${p.n}</div><div class="pitem-addr">${p.a}</div></div>
+      </div>`;
+    });
+  }
+  el.innerHTML=h;
+  document.getElementById('count').textContent=vis.length+' 个地点';
+}
+
+function focusPlace(i){
+  activeIdx=i;const p=P[i];
+  if(p.ll)map.flyTo(p.ll,15,{duration:.6});
+  openCard(i);
+  document.getElementById('sidebar').classList.remove('open');
+  renderList();
+}
+
+/* ============ CARD ============ */
+function openCard(i){
+  activeIdx=i;const p=P[i];const c=ci(p.t);
+  let linksH='';
+  if(p.l&&p.l.length){
+    linksH=`<div class="card-links"><div class="card-links-t">参考链接</div>`;
+    p.l.forEach((u,j)=>{linksH+=`<a class="clink" href="${u}" target="_blank" rel="noopener">🔗 小红书推荐${p.l.length>1?' '+(j+1):''}</a>`});
+    linksH+=`</div>`;
+  }
+  const descH=p.d?`<div class="card-desc">${p.d}</div>`:'';
+  const sn=p.n.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  const sa=p.a.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+
+  document.getElementById('card').innerHTML=`
+    <div class="card-top"><div><div class="card-badge" style="background:${c.c}">${c.icon} ${p.t}</div><div class="card-name">${p.n}</div></div><button class="card-x" onclick="closeCard()">✕</button></div>
+    <div class="card-body">
+      <div class="cblock" data-copy="${sn}" onclick="doCopy(this)"><div><div class="cblock-label">名称（点击复制）</div><div class="cblock-text">${p.n}</div></div><div class="cblock-icon">📋</div></div>
+      <div class="cblock" data-copy="${sa}" onclick="doCopy(this)"><div><div class="cblock-label">地址（点击复制）</div><div class="cblock-text">${p.a}</div></div><div class="cblock-icon">📋</div></div>
+      ${descH}${linksH}
+    </div>`;
+  document.getElementById('overlay').classList.add('show');
+  renderList();
+}
+function closeCard(){document.getElementById('overlay').classList.remove('show');activeIdx=null;renderList()}
+
+function doCopy(el){
+  const text=el.getAttribute('data-copy').replace(/&amp;/g,'&').replace(/&quot;/g,'"');
+  const icon=el.querySelector('.cblock-icon');
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(text).then(()=>flash(icon));
+  }else{
+    const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');flash(icon)}catch(e){}
+    document.body.removeChild(ta);
+  }
+}
+function flash(ic){ic.textContent='✅';setTimeout(()=>{ic.textContent='📋'},1200)}
+</script>
+</body>
+</html>
